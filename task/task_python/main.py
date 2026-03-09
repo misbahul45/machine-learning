@@ -1,26 +1,10 @@
 import pandas as pd
 
-# read csv file
-df_classification = pd.read_csv('./data/heart.csv')
-df_regression = pd.read_csv('./data/faang_stock_prices.csv')
-df_clustering = pd.read_csv('./data/Customer_Behaviour.csv')
+df = pd.read_csv('./data/Boston-house-price-data.csv')
 
-# kumpulan dataset
-df_cols = {
-    "classification": df_classification,
-    "regression": df_regression,
-    "clustering": df_clustering
-}
+print("========= Sample data =========")
+print(df.head())
 
-# loop tiap dataset
-for name, df in df_cols.items():
-    print(f"\n===== DATA {name.upper()} =====")
 
-    print("--- HEAD ---")
-    print(df.head())
-
-    print("--- DESCRIBE ---")
-    print(df.describe())
-
-    print("--- INFO ---")
-    df.info()
+print("\n========= Sample data =========")
+print(df.describe())
