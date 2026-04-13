@@ -27,7 +27,7 @@
 * ✅ Paham padding (valid vs same), stride effect ke output size
 * ✅ Bisa visualisasikan learned filters per layer
 * ✅ Mengerti CNN architecture evolution (LeNet → AlexNet → VGG → ResNet → EfficientNet)
-* ✅ Tahu kapan pakai 1x1 convolution (channel reduction, add non-linearity)
+* ✅ Tahu kapan pakai 1x1 convolution (channel reduction, add non-linearity) 
 * ✅ Paham batch normalization placement & effect
 
 ---
