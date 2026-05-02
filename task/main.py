@@ -1,5 +1,4 @@
 import os
-import io
 import time
 import warnings
 import numpy as np
@@ -27,16 +26,12 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* ---- Global ---- */
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;600;700;800&display=swap');
-
     html, body, [class*="css"] {
         font-family: 'Syne', sans-serif;
         background-color: #0a0e1a;
         color: #e2e8f0;
     }
-
-    /* Sidebar */
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0d1224 0%, #111827 100%);
         border-right: 1px solid #1e2940;
@@ -46,8 +41,6 @@ st.markdown(
         font-weight: 600;
         letter-spacing: 0.03em;
     }
-
-    /* KPI cards */
     .kpi-card {
         background: linear-gradient(135deg, #141c2f 0%, #1a2540 100%);
         border: 1px solid #1e2e50;
@@ -80,8 +73,6 @@ st.markdown(
         color: #94a3b8;
         margin-top: 2px;
     }
-
-    /* Section titles */
     .section-header {
         font-size: 1.35rem;
         font-weight: 800;
@@ -90,8 +81,6 @@ st.markdown(
         padding-left: 12px;
         margin-bottom: 18px;
     }
-
-    /* Probability badge */
     .prob-high {
         background: rgba(239,68,68,.15);
         border: 1px solid #ef4444;
@@ -125,8 +114,6 @@ st.markdown(
         font-size: 2rem;
         text-align: center;
     }
-
-    /* Info box */
     .info-box {
         background: rgba(59,130,246,.08);
         border: 1px solid #1d4ed8;
@@ -136,11 +123,7 @@ st.markdown(
         color: #93c5fd;
         margin-bottom: 12px;
     }
-
-    /* Divider */
     hr { border-color: #1e2940; }
-
-    /* Streamlit overrides */
     .stSlider > div { padding: 0; }
     div[data-testid="metric-container"] {
         background: #141c2f;
@@ -153,6 +136,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
 MODEL_PATH = os.path.join("model", "xgb_churn_model.pkl")
 THRESH_PATH = os.path.join("model", "xgb_churn_threshold.pkl")
 DEFAULT_THRESHOLD = 0.38
@@ -191,8 +175,8 @@ NUMERIC_FEATURES = ["tenure", "MonthlyCharges", "TotalCharges"]
 
 OHE_GROUPS = {
     "InternetService": ["InternetService_DSL", "InternetService_Fiber optic", "InternetService_No"],
-    "Contract":        ["Contract_Month-to-month", "Contract_One year", "Contract_Two year"],
-    "PaymentMethod":   [
+    "Contract": ["Contract_Month-to-month", "Contract_One year", "Contract_Two year"],
+    "PaymentMethod": [
         "PaymentMethod_Bank transfer (automatic)",
         "PaymentMethod_Credit card (automatic)",
         "PaymentMethod_Electronic check",
@@ -205,10 +189,9 @@ OHE_GROUPS = {
     ],
 }
 
-# ── Model Loading ─────────────────────────────────────────────────────────────
+
 @st.cache_resource(show_spinner=False)
 def load_model_and_threshold():
-    """Load XGBoost model and optimal threshold from disk."""
     model, threshold, error = None, DEFAULT_THRESHOLD, None
     try:
         model = joblib.load(MODEL_PATH)
@@ -221,8 +204,7 @@ def load_model_and_threshold():
     return model, threshold, error
 
 
-def get_feature_names(model) -> list[str]:
-    """Get feature names from model or fallback to spec."""
+def get_feature_names(model) -> list:
     try:
         return list(model.feature_names_in_)
     except AttributeError:
@@ -233,8 +215,7 @@ def get_feature_names(model) -> list[str]:
         return FEATURE_COLUMNS
 
 
-def get_feature_importances(model, feature_names: list[str]) -> pd.DataFrame:
-    """Return tidy DataFrame of feature importances."""
+def get_feature_importances(model, feature_names: list) -> pd.DataFrame:
     rows = []
     try:
         booster = model.get_booster()
@@ -242,40 +223,35 @@ def get_feature_importances(model, feature_names: list[str]) -> pd.DataFrame:
             scores = booster.get_score(importance_type=score_type)
             for feat, val in scores.items():
                 rows.append({"feature": feat, "type": score_type, "importance": val})
-        df = pd.DataFrame(rows)
-        return df
+        return pd.DataFrame(rows)
     except Exception:
         pass
     try:
-        imp = model.feature_importances_
-        df = pd.DataFrame({
+        return pd.DataFrame({
             "feature": feature_names,
             "type": "weight",
-            "importance": imp,
+            "importance": model.feature_importances_,
         })
-        return df
     except Exception:
         return pd.DataFrame(columns=["feature", "type", "importance"])
 
-def load_sample_data(n: int = 200, feature_names: list[str] | None = None) -> pd.DataFrame:
-    """Generate a synthetic DataFrame matching model feature columns."""
+
+def load_sample_data(n: int = 200, feature_names: list = None) -> pd.DataFrame:
     cols = feature_names or FEATURE_COLUMNS
     rng = np.random.default_rng(42)
     data = {}
     for col in cols:
         if col in BINARY_FEATURES:
             data[col] = rng.integers(0, 2, n)
-        elif col in NUMERIC_FEATURES:
-            if col == "tenure":
-                data[col] = rng.integers(0, 72, n).astype(float)
-            elif col == "MonthlyCharges":
-                data[col] = rng.uniform(18, 120, n)
-            else:
-                data[col] = rng.uniform(0, 8000, n)
-        else:  # OHE booleans
+        elif col == "tenure":
+            data[col] = rng.integers(0, 72, n).astype(float)
+        elif col == "MonthlyCharges":
+            data[col] = rng.uniform(18, 120, n)
+        elif col == "TotalCharges":
+            data[col] = rng.uniform(0, 8000, n)
+        else:
             data[col] = rng.integers(0, 2, n)
     df = pd.DataFrame(data)
-    # Fix OHE: ensure exactly one hot per group
     for group_cols in OHE_GROUPS.values():
         present = [c for c in group_cols if c in df.columns]
         if present:
@@ -284,8 +260,8 @@ def load_sample_data(n: int = 200, feature_names: list[str] | None = None) -> pd
                 df[c] = (choices == i).astype(int)
     return df
 
+
 def compute_metrics(y_true: np.ndarray, y_prob: np.ndarray, threshold: float) -> dict:
-    """Compute all classification metrics at given threshold."""
     y_pred = (y_prob >= threshold).astype(int)
     cm = confusion_matrix(y_true, y_pred)
     tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
@@ -295,29 +271,40 @@ def compute_metrics(y_true: np.ndarray, y_prob: np.ndarray, threshold: float) ->
         "recall":    recall_score(y_true, y_pred, zero_division=0),
         "f1":        f1_score(y_true, y_pred, zero_division=0),
         "roc_auc":   roc_auc_score(y_true, y_prob),
-        "cm": cm,
-        "tn": tn, "fp": fp, "fn": fn, "tp": tp,
+        "cm": cm, "tn": tn, "fp": fp, "fn": fn, "tp": tp,
         "y_pred": y_pred,
     }
 
 
+def align_columns(df: pd.DataFrame, feature_names: list) -> pd.DataFrame:
+    for col in feature_names:
+        if col not in df.columns:
+            df[col] = 0
+    return df[feature_names]
+
+
+def kpi_card(label: str, value: str, delta: str = "") -> str:
+    delta_html = f"<p class='kpi-delta'>{delta}</p>" if delta else ""
+    return (
+        f"<div class='kpi-card'>"
+        f"<p class='kpi-value'>{value}</p>"
+        f"<p class='kpi-label'>{label}</p>"
+        f"{delta_html}</div>"
+    )
+
+
 def fig_confusion_matrix(cm: np.ndarray) -> go.Figure:
     labels = ["No Churn (0)", "Churn (1)"]
-    text = [[str(cm[i][j]) for j in range(2)] for i in range(2)]
     total = cm.sum()
-    pct   = [[f"{cm[i][j]/total*100:.1f}%" for j in range(2)] for i in range(2)]
-    hover = [[f"{text[i][j]} samples<br>{pct[i][j]}" for j in range(2)] for i in range(2)]
-
+    text = [[
+        f"<b>{cm[i][j]}</b><br><span style='font-size:11px;color:#94a3b8'>{cm[i][j]/total*100:.1f}%</span>"
+        for j in range(2)] for i in range(2)]
+    hover = [[f"{cm[i][j]} samples — {cm[i][j]/total*100:.1f}%" for j in range(2)] for i in range(2)]
     fig = go.Figure(go.Heatmap(
-        z=cm,
-        x=labels, y=labels,
+        z=cm, x=labels, y=labels,
         colorscale=[[0, "#0f1729"], [0.5, "#1d4ed8"], [1, "#3b82f6"]],
-        showscale=False,
-        text=[[f"<b>{text[i][j]}</b><br><span style='font-size:11px;color:#94a3b8'>{pct[i][j]}</span>"
-               for j in range(2)] for i in range(2)],
-        hovertext=hover,
-        texttemplate="%{text}",
-        hovertemplate="%{hovertext}<extra></extra>",
+        showscale=False, text=text, hovertext=hover,
+        texttemplate="%{text}", hovertemplate="%{hovertext}<extra></extra>",
         textfont=dict(size=18),
     ))
     fig.update_layout(
@@ -332,22 +319,14 @@ def fig_confusion_matrix(cm: np.ndarray) -> go.Figure:
 
 def fig_roc_pr(y_true: np.ndarray, y_prob: np.ndarray) -> go.Figure:
     fig = make_subplots(rows=1, cols=2, subplot_titles=("ROC Curve", "Precision-Recall Curve"))
-
     fpr, tpr, _ = roc_curve(y_true, y_prob)
     auc = roc_auc_score(y_true, y_prob)
     fig.add_trace(go.Scatter(x=fpr, y=tpr, name=f"AUC={auc:.3f}", line=dict(color="#3b82f6", width=2)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=[0,1], y=[0,1], mode="lines", line=dict(dash="dash", color="#334155"), showlegend=False), row=1, col=1)
-
+    fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", line=dict(dash="dash", color="#334155"), showlegend=False), row=1, col=1)
     prec, rec, _ = precision_recall_curve(y_true, y_prob)
     ap = float(np.mean(prec))
     fig.add_trace(go.Scatter(x=rec, y=prec, name=f"Avg Prec={ap:.3f}", line=dict(color="#06b6d4", width=2)), row=1, col=2)
-
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=340,
-        showlegend=True,
-        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
-    )
+    fig.update_layout(**PLOTLY_LAYOUT, height=340, showlegend=True, legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11)))
     fig.update_xaxes(showgrid=True, gridcolor="#1e2940", title_font=dict(size=11))
     fig.update_yaxes(showgrid=True, gridcolor="#1e2940", title_font=dict(size=11))
     fig.update_xaxes(title_text="False Positive Rate", row=1, col=1)
@@ -362,15 +341,12 @@ def fig_feature_importance(df_imp: pd.DataFrame, imp_type: str, top_n: int, asce
     df = df.sort_values("importance", ascending=ascending).tail(top_n)
     colors = px.colors.sample_colorscale("Blues", np.linspace(0.3, 1.0, len(df)))
     fig = go.Figure(go.Bar(
-        x=df["importance"],
-        y=df["feature"],
-        orientation="h",
+        x=df["importance"], y=df["feature"], orientation="h",
         marker=dict(color=colors),
         hovertemplate="<b>%{y}</b><br>Importance: %{x:.4f}<extra></extra>",
     ))
     fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=max(300, top_n * 28),
+        **PLOTLY_LAYOUT, height=max(300, top_n * 28),
         xaxis=dict(title=f"Importance ({imp_type})", showgrid=True, gridcolor="#1e2940"),
         yaxis=dict(showgrid=False),
         title=dict(text=f"Feature Importance — {imp_type.capitalize()}", x=0.5, xanchor="center"),
@@ -380,29 +356,24 @@ def fig_feature_importance(df_imp: pd.DataFrame, imp_type: str, top_n: int, asce
 
 def fig_threshold_curve(y_true: np.ndarray, y_prob: np.ndarray, active_thresh: float) -> go.Figure:
     thresholds = np.arange(0.10, 0.91, 0.01)
-    metrics = {"F1": [], "Precision": [], "Recall": []}
+    f1s, precs, recs = [], [], []
     for t in thresholds:
         y_p = (y_prob >= t).astype(int)
-        metrics["F1"].append(f1_score(y_true, y_p, zero_division=0))
-        metrics["Precision"].append(precision_score(y_true, y_p, zero_division=0))
-        metrics["Recall"].append(recall_score(y_true, y_p, zero_division=0))
-
+        f1s.append(f1_score(y_true, y_p, zero_division=0))
+        precs.append(precision_score(y_true, y_p, zero_division=0))
+        recs.append(recall_score(y_true, y_p, zero_division=0))
     fig = go.Figure()
-    colors = {"F1": "#3b82f6", "Precision": "#06b6d4", "Recall": "#f59e0b"}
-    for name, vals in metrics.items():
-        fig.add_trace(go.Scatter(x=thresholds, y=vals, name=name,
-                                 line=dict(color=colors[name], width=2)))
-
-    idx = np.argmin(np.abs(thresholds - active_thresh))
+    for name, vals, color in [("F1", f1s, "#3b82f6"), ("Precision", precs, "#06b6d4"), ("Recall", recs, "#f59e0b")]:
+        fig.add_trace(go.Scatter(x=thresholds, y=vals, name=name, line=dict(color=color, width=2)))
+    idx = int(np.argmin(np.abs(thresholds - active_thresh)))
     fig.add_trace(go.Scatter(
-        x=[active_thresh], y=[metrics["F1"][idx]],
-        mode="markers", name=f"Active ({active_thresh:.2f})",
+        x=[active_thresh], y=[f1s[idx]], mode="markers",
+        name=f"Active ({active_thresh:.2f})",
         marker=dict(color="#ef4444", size=12, symbol="diamond"),
     ))
     fig.add_vline(x=active_thresh, line_dash="dash", line_color="#ef4444", opacity=0.5)
     fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=360,
+        **PLOTLY_LAYOUT, height=360,
         xaxis=dict(title="Threshold", showgrid=True, gridcolor="#1e2940"),
         yaxis=dict(title="Score", showgrid=True, gridcolor="#1e2940", range=[0, 1]),
         title=dict(text="Threshold vs Metrics", x=0.5, xanchor="center"),
@@ -414,53 +385,26 @@ def fig_prediction_dist(y_pred: np.ndarray) -> go.Figure:
     vals, cnts = np.unique(y_pred, return_counts=True)
     labels = ["No Churn" if v == 0 else "Churn" for v in vals]
     fig = go.Figure(go.Pie(
-        labels=labels, values=cnts,
-        hole=0.55,
+        labels=labels, values=cnts, hole=0.55,
         marker=dict(colors=["#22c55e", "#ef4444"]),
         textinfo="label+percent",
         hovertemplate="%{label}: %{value} records<extra></extra>",
     ))
-    fig.update_layout(**PLOTLY_LAYOUT, height=300,
-                      title=dict(text="Predicted Distribution", x=0.5, xanchor="center"))
+    fig.update_layout(**PLOTLY_LAYOUT, height=300, title=dict(text="Predicted Distribution", x=0.5, xanchor="center"))
     return fig
 
 
-# ── KPI Card HTML ─────────────────────────────────────────────────────────────
-def kpi_card(label: str, value: str, delta: str = "") -> str:
-    return f"""
-    <div class="kpi-card">
-        <p class="kpi-value">{value}</p>
-        <p class="kpi-label">{label}</p>
-        {"<p class='kpi-delta'>" + delta + "</p>" if delta else ""}
-    </div>
-    """
-
-
-def align_columns(df: pd.DataFrame, feature_names: list[str]) -> pd.DataFrame:
-    """Add missing columns as 0, drop extra; return in correct order."""
-    for col in feature_names:
-        if col not in df.columns:
-            df[col] = 0
-    return df[feature_names]
-
-
-def render_sidebar(threshold_default: float) -> tuple[str, float]:
+def render_sidebar(threshold_default: float) -> tuple:
     with st.sidebar:
         st.markdown(
-            """
-            <div style='text-align:center;padding:20px 0 10px'>
-                <span style='font-size:2.2rem'>⚡</span>
-                <h2 style='margin:4px 0 2px;font-size:1.25rem;font-weight:800;color:#f1f5f9'>
-                    Churn Intelligence
-                </h2>
-                <p style='font-size:0.72rem;letter-spacing:.12em;text-transform:uppercase;
-                          color:#475569;margin:0'>XGBoost · Telco · v1.0</p>
-            </div>
-            <hr style='border-color:#1e2940;margin:0 0 18px'>
-            """,
+            "<div style='text-align:center;padding:20px 0 10px'>"
+            "<span style='font-size:2.2rem'>⚡</span>"
+            "<h2 style='margin:4px 0 2px;font-size:1.25rem;font-weight:800;color:#f1f5f9'>Churn Intelligence</h2>"
+            "<p style='font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;"
+            "color:#475569;margin:0'>XGBoost · Telco · v1.0</p></div>"
+            "<hr style='border-color:#1e2940;margin:0 0 18px'>",
             unsafe_allow_html=True,
         )
-
         page = st.radio(
             "Navigate",
             [
@@ -473,7 +417,6 @@ def render_sidebar(threshold_default: float) -> tuple[str, float]:
             ],
             label_visibility="collapsed",
         )
-
         st.markdown("<hr style='border-color:#1e2940;margin:18px 0'>", unsafe_allow_html=True)
         st.markdown(
             "<p style='font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;"
@@ -481,10 +424,9 @@ def render_sidebar(threshold_default: float) -> tuple[str, float]:
             unsafe_allow_html=True,
         )
         global_thresh = st.slider(
-            "threshold_global",
-            0.10, 0.90, float(threshold_default), 0.01,
+            "threshold_global", 0.10, 0.90, float(threshold_default), 0.01,
             label_visibility="collapsed",
-            help="Threshold aktif untuk semua halaman. Ubah untuk melihat dampak real-time.",
+            help="Threshold aktif untuk semua halaman.",
         )
         st.markdown(
             f"<p style='font-family:JetBrains Mono,monospace;color:#3b82f6;"
@@ -493,32 +435,33 @@ def render_sidebar(threshold_default: float) -> tuple[str, float]:
         )
         st.markdown("<hr style='border-color:#1e2940;margin:18px 0 10px'>", unsafe_allow_html=True)
         st.caption("Built with Streamlit + XGBoost")
-
     return page, global_thresh
 
-def page_dashboard(model, feature_names: list[str], threshold: float):
-    st.markdown("<div class='section-header'>Dashboard Overview</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='info-box'>📋 Upload test CSV (dengan kolom <code>Churn</code>) untuk evaluasi real. Jika tidak, digunakan data sampel sintetis.</div>", unsafe_allow_html=True)
+def page_dashboard(model, feature_names: list, threshold: float):
+    st.markdown("<div class='section-header'>Dashboard Overview</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='info-box'>📋 Upload test CSV (dengan kolom <code>Churn</code>) untuk evaluasi real. "
+        "Jika tidak ada, data sampel sintetis digunakan.</div>",
+        unsafe_allow_html=True,
+    )
     uploaded = st.file_uploader("Upload test data (CSV)", type="csv", key="dash_upload")
 
     if uploaded:
         try:
             df_raw = pd.read_csv(uploaded)
-            if "Churn" in df_raw.columns:
-                y_true = df_raw["Churn"].values.astype(int)
-                X_raw = df_raw.drop(columns=["Churn"])
-            else:
+            if "Churn" not in df_raw.columns:
                 st.error("Kolom `Churn` tidak ditemukan.")
                 return
+            y_true = df_raw["Churn"].values.astype(int)
+            X_raw = df_raw.drop(columns=["Churn"])
         except Exception as e:
             st.error(f"Error membaca file: {e}")
             return
     else:
-        df_synth = load_sample_data(400, feature_names)
+        X_raw = load_sample_data(400, feature_names)
         rng = np.random.default_rng(7)
         y_true = rng.choice([0, 1], size=400, p=[0.73, 0.27])
-        X_raw = df_synth
 
     try:
         X_aligned = align_columns(X_raw.copy(), feature_names)
@@ -530,22 +473,21 @@ def page_dashboard(model, feature_names: list[str], threshold: float):
     m = compute_metrics(y_true, y_prob, threshold)
 
     cols = st.columns(6)
-    kpis = [
+    for col, (label, val, delta) in zip(cols, [
         ("Accuracy",  f"{m['accuracy']:.3f}",  "Overall correct"),
         ("Precision", f"{m['precision']:.3f}", "TP / (TP+FP)"),
         ("Recall",    f"{m['recall']:.3f}",    "TP / (TP+FN)"),
         ("F1-Score",  f"{m['f1']:.3f}",        "Harmonic mean"),
         ("ROC-AUC",   f"{m['roc_auc']:.3f}",   "Discrimination"),
         ("Threshold", f"{threshold:.2f}",       "Active cutoff"),
-    ]
-    for col, (label, val, delta) in zip(cols, kpis):
+    ]):
         col.markdown(kpi_card(label, val, delta), unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     col1, col2 = st.columns([1, 1.8])
     with col1:
-        st.plotly_chart(fig_confusion_matrix(m["cm"]), use_container_width=True)
+        st.plotly_chart(fig_confusion_matrix(m["cm"]), width="stretch")
         detail_cols = st.columns(4)
         for dc, (lbl, val, color) in zip(detail_cols, [
             ("TP", m["tp"], "#22c55e"), ("TN", m["tn"], "#3b82f6"),
@@ -559,10 +501,9 @@ def page_dashboard(model, feature_names: list[str], threshold: float):
                 unsafe_allow_html=True,
             )
     with col2:
-        st.plotly_chart(fig_roc_pr(y_true, y_prob), use_container_width=True)
+        st.plotly_chart(fig_roc_pr(y_true, y_prob), width="stretch")
 
     st.markdown("<br>", unsafe_allow_html=True)
-
     st.markdown("<div class='section-header' style='font-size:1.1rem'>Classification Report</div>", unsafe_allow_html=True)
     report_dict = classification_report(y_true, m["y_pred"], target_names=["No Churn", "Churn"], output_dict=True)
     df_report = pd.DataFrame(report_dict).T.round(3)
@@ -570,12 +511,12 @@ def page_dashboard(model, feature_names: list[str], threshold: float):
         df_report.style
             .background_gradient(cmap="Blues", vmin=0, vmax=1, subset=["precision", "recall", "f1-score"])
             .format("{:.3f}", subset=["precision", "recall", "f1-score"]),
-        use_container_width=True,
+        width="stretch",
     )
 
-def page_feature_importance(model, feature_names: list[str]):
-    st.markdown("<div class='section-header'>Feature Importance</div>", unsafe_allow_html=True)
 
+def page_feature_importance(model, feature_names: list):
+    st.markdown("<div class='section-header'>Feature Importance</div>", unsafe_allow_html=True)
     df_imp = get_feature_importances(model, feature_names)
     if df_imp.empty:
         st.warning("Feature importance tidak tersedia.")
@@ -583,16 +524,12 @@ def page_feature_importance(model, feature_names: list[str]):
 
     available_types = df_imp["type"].unique().tolist()
     col1, col2, col3 = st.columns([1, 1, 1])
-    imp_type  = col1.selectbox("Importance Type", available_types, index=0)
-    top_n     = col2.slider("Top N Features", 5, len(feature_names), 15)
+    imp_type = col1.selectbox("Importance Type", available_types, index=0)
+    top_n = col2.slider("Top N Features", 5, len(feature_names), 15)
     ascending = col3.radio("Sort Direction", ["Top-Down", "Bottom-Up"], horizontal=True) == "Bottom-Up"
 
-    st.plotly_chart(
-        fig_feature_importance(df_imp, imp_type, top_n, ascending),
-        use_container_width=True,
-    )
+    st.plotly_chart(fig_feature_importance(df_imp, imp_type, top_n, ascending), width="stretch")
 
-    # Table
     st.markdown("#### Raw Scores")
     df_display = (
         df_imp[df_imp["type"] == imp_type]
@@ -600,26 +537,19 @@ def page_feature_importance(model, feature_names: list[str]):
         .reset_index(drop=True)
     )
     df_display.index += 1
-    st.dataframe(
-        df_display.style.bar(subset=["importance"], color="#1d4ed8"),
-        use_container_width=True, height=320,
-    )
+    st.dataframe(df_display.style.bar(subset=["importance"], color="#1d4ed8"), width="stretch", height=320)
 
 
-# ── Page: Threshold Tuning ────────────────────────────────────────────────────
-def page_threshold_tuning(model, feature_names: list[str], global_threshold: float):
+def page_threshold_tuning(model, feature_names: list, global_threshold: float):
     st.markdown("<div class='section-header'>Threshold Tuning Simulator</div>", unsafe_allow_html=True)
-
     st.markdown(
         "<div class='info-box'>Geser slider untuk melihat dampak threshold terhadap semua metrik secara real-time.<br>"
         "<b>Tip bisnis:</b> Threshold rendah → lebih agresif menangkap churn (Recall ↑). "
-        "Threshold tinggi → lebih presisi (Precision ↑). Pilih berdasarkan biaya bisnis False Negative vs False Positive.</div>",
+        "Threshold tinggi → lebih presisi (Precision ↑).</div>",
         unsafe_allow_html=True,
     )
-
     threshold = st.slider("Active Threshold", 0.10, 0.90, float(global_threshold), 0.01, key="tuner_slider")
 
-    # Generate sample data
     df_synth = load_sample_data(500, feature_names)
     rng = np.random.default_rng(99)
     y_true = rng.choice([0, 1], size=500, p=[0.73, 0.27])
@@ -633,7 +563,6 @@ def page_threshold_tuning(model, feature_names: list[str], global_threshold: flo
 
     m = compute_metrics(y_true, y_prob, threshold)
 
-    # Real-time KPI row
     cols = st.columns(4)
     for col, (label, val) in zip(cols, [
         ("Precision", f"{m['precision']:.3f}"),
@@ -647,32 +576,27 @@ def page_threshold_tuning(model, feature_names: list[str], global_threshold: flo
 
     col_a, col_b = st.columns(2)
     with col_a:
-        st.plotly_chart(fig_threshold_curve(y_true, y_prob, threshold), use_container_width=True)
+        st.plotly_chart(fig_threshold_curve(y_true, y_prob, threshold), width="stretch")
     with col_b:
-        st.plotly_chart(fig_prediction_dist(m["y_pred"]), use_container_width=True)
+        st.plotly_chart(fig_prediction_dist(m["y_pred"]), width="stretch")
 
     col_c, _ = st.columns([1, 1])
     with col_c:
-        st.plotly_chart(fig_confusion_matrix(m["cm"]), use_container_width=True)
+        st.plotly_chart(fig_confusion_matrix(m["cm"]), width="stretch")
 
 
-# ── Page: Single Prediction ───────────────────────────────────────────────────
-def page_single_prediction(model, feature_names: list[str], threshold: float):
+def page_single_prediction(model, feature_names: list, threshold: float):
     st.markdown("<div class='section-header'>Single Prediction</div>", unsafe_allow_html=True)
 
-    # ── Reset session state ──
-    if "sp_reset" not in st.session_state:
-        st.session_state["sp_reset"] = False
-
     if st.button("🔄 Reset Form"):
-        for k in list(st.session_state.keys()):
-            if k.startswith("sp_"):
-                del st.session_state[k]
-        st.session_state["sp_reset"] = True
+        for k in [k for k in st.session_state if k.startswith("sp_")]:
+            del st.session_state[k]
+        if "sp_result" in st.session_state:
+            del st.session_state["sp_result"]
         st.rerun()
 
-    # ── Form ──
     st.markdown("#### Input Customer Data")
+
     with st.form("single_pred_form"):
         col1, col2, col3 = st.columns(3)
 
@@ -686,138 +610,163 @@ def page_single_prediction(model, feature_names: list[str], threshold: float):
 
         with col2:
             st.markdown("**📡 Services**")
-            phone_line   = st.selectbox("Phone Line", ["Single Line", "Multiple Lines", "No Phone Service"], key="sp_phoneline")
-            internet     = st.selectbox("Internet Service", ["DSL", "Fiber optic", "No"], key="sp_internet")
-            online_sec   = st.selectbox("Online Security", ["Yes", "No"], key="sp_sec")
-            online_bak   = st.selectbox("Online Backup", ["Yes", "No"], key="sp_bak")
-            dev_prot     = st.selectbox("Device Protection", ["Yes", "No"], key="sp_devprot")
-            tech_sup     = st.selectbox("Tech Support", ["Yes", "No"], key="sp_techsup")
-            stream_tv    = st.selectbox("Streaming TV", ["Yes", "No"], key="sp_tv")
-            stream_mov   = st.selectbox("Streaming Movies", ["Yes", "No"], key="sp_mov")
+            phone_line  = st.selectbox("Phone Line", ["Single Line", "Multiple Lines", "No Phone Service"], key="sp_phoneline")
+            internet    = st.selectbox("Internet Service", ["DSL", "Fiber optic", "No"], key="sp_internet")
+            online_sec  = st.selectbox("Online Security", ["Yes", "No"], key="sp_sec")
+            online_bak  = st.selectbox("Online Backup", ["Yes", "No"], key="sp_bak")
+            dev_prot    = st.selectbox("Device Protection", ["Yes", "No"], key="sp_devprot")
+            tech_sup    = st.selectbox("Tech Support", ["Yes", "No"], key="sp_techsup")
+            stream_tv   = st.selectbox("Streaming TV", ["Yes", "No"], key="sp_tv")
+            stream_mov  = st.selectbox("Streaming Movies", ["Yes", "No"], key="sp_mov")
 
         with col3:
             st.markdown("**💳 Billing**")
-            contract     = st.selectbox("Contract", ["Month-to-month", "One year", "Two year"], key="sp_contract")
-            paperless    = st.selectbox("Paperless Billing", ["Yes", "No"], key="sp_paper")
-            payment      = st.selectbox("Payment Method", [
+            contract    = st.selectbox("Contract", ["Month-to-month", "One year", "Two year"], key="sp_contract")
+            paperless   = st.selectbox("Paperless Billing", ["Yes", "No"], key="sp_paper")
+            payment     = st.selectbox("Payment Method", [
                 "Electronic check", "Mailed check",
-                "Bank transfer (automatic)", "Credit card (automatic)"
+                "Bank transfer (automatic)", "Credit card (automatic)",
             ], key="sp_payment")
-            monthly_chg  = st.number_input("Monthly Charges ($)", 0.0, 150.0, 65.0, 0.5, key="sp_monthly")
-            total_chg    = st.number_input("Total Charges ($)", 0.0, 10000.0, float(monthly_chg * tenure), key="sp_total")
-            has_internet = "Has Internet" if internet != "No" else "No Internet"
+            monthly_chg = st.number_input("Monthly Charges ($)", 0.0, 150.0, 65.0, 0.5, key="sp_monthly")
+            total_chg   = st.number_input("Total Charges ($)", 0.0, 10000.0, 780.0, key="sp_total")
 
         submitted = st.form_submit_button("⚡ Predict Churn")
 
     if submitted:
-        # Build row
-        row: dict[str, int | float] = {f: 0 for f in feature_names}
-        # Binary label-encoded (0/1)
-        row["gender"]          = 1 if gender == "Male" else 0
-        row["SeniorCitizen"]   = int(senior)
-        row["Partner"]         = 1 if partner == "Yes" else 0
-        row["Dependents"]      = 1 if dependents == "Yes" else 0
-        row["OnlineSecurity"]  = 1 if online_sec == "Yes" else 0
-        row["OnlineBackup"]    = 1 if online_bak == "Yes" else 0
-        row["DeviceProtection"]= 1 if dev_prot == "Yes" else 0
-        row["TechSupport"]     = 1 if tech_sup == "Yes" else 0
-        row["StreamingTV"]     = 1 if stream_tv == "Yes" else 0
-        row["StreamingMovies"] = 1 if stream_mov == "Yes" else 0
-        row["PaperlessBilling"]= 1 if paperless == "Yes" else 0
-        row["HasInternet"]     = 1 if has_internet == "Has Internet" else 0
-        # Numeric
-        row["tenure"]          = float(tenure)
-        row["MonthlyCharges"]  = float(monthly_chg)
-        row["TotalCharges"]    = float(total_chg)
-        # OHE
-        row[f"InternetService_{internet}"] = 1
-        row[f"Contract_{contract}"]        = 1
-        row[f"PaymentMethod_{payment}"]    = 1
-        row[f"PhoneLineStatus_{phone_line}"] = 1
+        has_internet = "Has Internet" if internet != "No" else "No Internet"
+        row = {f: 0 for f in feature_names}
+        row["gender"]           = 1 if gender == "Male" else 0
+        row["SeniorCitizen"]    = int(senior)
+        row["Partner"]          = 1 if partner == "Yes" else 0
+        row["Dependents"]       = 1 if dependents == "Yes" else 0
+        row["OnlineSecurity"]   = 1 if online_sec == "Yes" else 0
+        row["OnlineBackup"]     = 1 if online_bak == "Yes" else 0
+        row["DeviceProtection"] = 1 if dev_prot == "Yes" else 0
+        row["TechSupport"]      = 1 if tech_sup == "Yes" else 0
+        row["StreamingTV"]      = 1 if stream_tv == "Yes" else 0
+        row["StreamingMovies"]  = 1 if stream_mov == "Yes" else 0
+        row["PaperlessBilling"] = 1 if paperless == "Yes" else 0
+        row["HasInternet"]      = 1 if has_internet == "Has Internet" else 0
+        row["tenure"]           = float(tenure)
+        row["MonthlyCharges"]   = float(monthly_chg)
+        row["TotalCharges"]     = float(total_chg)
+        for ohe_key in [f"InternetService_{internet}", f"Contract_{contract}",
+                         f"PaymentMethod_{payment}", f"PhoneLineStatus_{phone_line}"]:
+            if ohe_key in row:
+                row[ohe_key] = 1
 
-        df_input = pd.DataFrame([row])
-        df_input = align_columns(df_input, feature_names)
-
+        df_input = align_columns(pd.DataFrame([row]), feature_names)
         try:
             prob = float(model.predict_proba(df_input)[0, 1])
+            pred = int(prob >= threshold)
+            dist_from_thresh = abs(prob - threshold)
+            confidence = min(dist_from_thresh / max(threshold, 1 - threshold), 1.0)
+            conf_level = "High" if confidence > 0.5 else ("Medium" if confidence > 0.25 else "Low")
+            estimated_acc = 0.73 + (confidence * 0.22) if pred == 1 else 0.88 + (confidence * 0.09)
+            st.session_state["sp_result"] = {
+                "prob": prob, "pred": pred, "confidence": confidence,
+                "conf_level": conf_level, "estimated_acc": estimated_acc
+            }
         except Exception as e:
             st.error(f"Prediksi gagal: {e}")
-            return
 
-        pred = int(prob >= threshold)
-        st.session_state["sp_result"] = {"prob": prob, "pred": pred, "threshold": threshold}
-
-    # ── Result ──
     if "sp_result" in st.session_state:
         res = st.session_state["sp_result"]
         prob, pred = res["prob"], res["pred"]
+        conf_level, estimated_acc = res["conf_level"], res["estimated_acc"]
+
         st.markdown("---")
         st.markdown("#### 🎯 Prediction Result")
 
-        col_r1, col_r2, col_r3 = st.columns(3)
-
-        pct = f"{prob*100:.1f}%"
+        pct = f"{prob * 100:.1f}%"
         css_cls = "prob-high" if prob >= 0.6 else ("prob-med" if prob >= threshold else "prob-low")
-        col_r1.markdown(f"<div class='{css_cls}'>{pct}</div>", unsafe_allow_html=True)
-        col_r1.markdown("<p style='text-align:center;color:#64748b;font-size:.8rem;margin-top:6px'>Churn Probability</p>", unsafe_allow_html=True)
 
-        verdict_color = "#ef4444" if pred == 1 else "#22c55e"
-        verdict_text  = "⚠️ CHURN" if pred == 1 else "✅ RETAIN"
-        col_r2.markdown(
-            f"<div style='text-align:center;padding:10px;background:rgba(255,255,255,.03);"
-            f"border-radius:10px;border:1px solid {verdict_color}44'>"
-            f"<b style='font-size:1.6rem;color:{verdict_color}'>{verdict_text}</b>"
-            f"<br><span style='font-size:.75rem;color:#64748b'>Threshold: {threshold:.2f}</span></div>",
-            unsafe_allow_html=True,
-        )
+        col_r1, col_r2, col_r3 = st.columns(3)
+        with col_r1:
+            st.markdown(f"<div class='{css_cls}'>{pct}</div>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align:center;color:#64748b;font-size:.8rem;margin-top:6px'>Churn Probability</p>", unsafe_allow_html=True)
 
-        conf_pct = abs(prob - threshold) / max(threshold, 1 - threshold) * 100
-        conf_label = "High" if conf_pct > 40 else ("Medium" if conf_pct > 15 else "Low")
-        conf_color = "#22c55e" if conf_pct > 40 else ("#f59e0b" if conf_pct > 15 else "#ef4444")
-        col_r3.markdown(
-            f"<div style='text-align:center;padding:10px;background:rgba(255,255,255,.03);"
-            f"border-radius:10px;border:1px solid {conf_color}44'>"
-            f"<b style='font-size:1.6rem;color:{conf_color}'>{conf_label}</b>"
-            f"<br><span style='font-size:.75rem;color:#64748b'>Confidence Level</span></div>",
-            unsafe_allow_html=True,
-        )
+        with col_r2:
+            verdict_color = "#ef4444" if pred == 1 else "#22c55e"
+            verdict_text  = "⚠️ CHURN" if pred == 1 else "✅ RETAIN"
+            st.markdown(
+                f"<div style='text-align:center;padding:10px;background:rgba(255,255,255,.03);"
+                f"border-radius:10px;border:1px solid {verdict_color}44'>"
+                f"<b style='font-size:1.6rem;color:{verdict_color}'>{verdict_text}</b>"
+                f"<br><span style='font-size:.75rem;color:#64748b'>Threshold: {threshold:.2f}</span></div>",
+                unsafe_allow_html=True,
+            )
 
-        # Probability gauge
-        gauge = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=prob * 100,
-            number={"suffix": "%", "font": {"size": 32, "color": "#60a5fa", "family": "JetBrains Mono"}},
-            gauge=dict(
-                axis=dict(range=[0, 100], tickwidth=1, tickcolor="#334155"),
-                bar=dict(color="#3b82f6"),
-                bgcolor="#141c2f",
-                steps=[
-                    dict(range=[0, threshold*100], color="#1a2540"),
-                    dict(range=[threshold*100, 100], color="#1e1025"),
-                ],
-                threshold=dict(line=dict(color="#ef4444", width=3), thickness=0.85, value=threshold*100),
-            ),
-        ))
-        gauge.update_layout(**PLOTLY_LAYOUT, height=280)
-        st.plotly_chart(gauge, use_container_width=True)
+        with col_r3:
+            conf_color = "#22c55e" if conf_level == "High" else ("#f59e0b" if conf_level == "Medium" else "#ef4444")
+            st.markdown(
+                f"<div style='text-align:center;padding:10px;background:rgba(255,255,255,.03);"
+                f"border-radius:10px;border:1px solid {conf_color}44'>"
+                f"<b style='font-size:1.6rem;color:{conf_color}'>{conf_level}</b>"
+                f"<br><span style='font-size:.75rem;color:#64748b'>Confidence</span></div>",
+                unsafe_allow_html=True,
+            )
+
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            gauge_margin = {**PLOTLY_LAYOUT["margin"], "t": 30, "b": 10}
+            gauge = go.Figure(go.Indicator(
+                mode="gauge+number+delta",
+                value=prob * 100,
+                number={"suffix": "%", "font": {"size": 28, "color": "#60a5fa", "family": "JetBrains Mono"}},
+                delta={"reference": threshold * 100, "increasing": {"color": "#ef4444"}, "decreasing": {"color": "#22c55e"}},
+                gauge=dict(
+                    axis=dict(range=[0, 100], tickwidth=1, tickcolor="#334155"),
+                    bar=dict(color="#3b82f6"),
+                    bgcolor="#141c2f",
+                    steps=[
+                        dict(range=[0, threshold * 100], color="rgba(30,41,59,0.6)"),
+                        dict(range=[threshold * 100, 100], color="rgba(239,68,68,0.15)"),
+                    ],
+                    threshold=dict(line=dict(color="#ef4444", width=3), thickness=0.85, value=threshold * 100),
+                ),
+            ))
+            gauge.update_layout(**{**PLOTLY_LAYOUT, "margin": gauge_margin}, height=260)
+            st.plotly_chart(gauge, width="stretch")
+
+        with col_g2:
+            st.markdown("#### 📊 Prediction Metrics")
+            metric_rows = [
+                ("Predicted Class", "Churn (1)" if pred == 1 else "No Churn (0)", "#60a5fa"),
+                ("Confidence Level", conf_level, "#22c55e" if conf_level == "High" else "#f59e0b" if conf_level == "Medium" else "#ef4444"),
+                ("Estimated Accuracy", f"{estimated_acc * 100:.1f}%", "#8b5cf6"),
+                ("Distance from Threshold", f"{abs(prob - threshold):.3f}", "#06b6d4"),
+            ]
+            for label, value, color in metric_rows:
+                st.markdown(
+                    f"<div style='display:flex;justify-content:space-between;padding:10px 14px;"
+                    f"background:#141c2f;border-radius:8px;margin-bottom:8px;border-left:3px solid {color}'>"
+                    f"<span style='color:#94a3b8;font-size:.85rem'>{label}</span>"
+                    f"<span style='color:{color};font-family:JetBrains Mono,monospace;font-weight:600'>{value}</span></div>",
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown(
+                "<div style='font-size:.78rem;color:#64748b;margin-top:12px;padding:10px;"
+                "background:rgba(59,130,246,.08);border-radius:8px;border:1px solid #1d4ed8'>"
+                "💡 <b>Catatan:</b> Estimated accuracy dihitung berdasarkan jarak probabilitas dari threshold. "
+                "Semakin jauh dari threshold, semakin tinggi confidence model terhadap prediksi ini."
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
 
-# ── Page: Batch Prediction ────────────────────────────────────────────────────
-def page_batch_prediction(model, feature_names: list[str], threshold: float):
+def page_batch_prediction(model, feature_names: list, threshold: float):
     st.markdown("<div class='section-header'>Batch Prediction</div>", unsafe_allow_html=True)
-
     st.markdown(
         "<div class='info-box'>Upload CSV dengan kolom sesuai fitur model. "
-        "Kolom <code>Churn</code> (opsional) akan digunakan sebagai ground truth.</div>",
+        "Kolom <code>Churn</code> (opsional) digunakan sebagai ground truth untuk evaluasi.</div>",
         unsafe_allow_html=True,
     )
 
-    # Template download
-    template_df = pd.DataFrame(columns=feature_names)
-    template_csv = template_df.to_csv(index=False)
     st.download_button(
         "📥 Download Template CSV",
-        data=template_csv,
+        data=pd.DataFrame(columns=feature_names).to_csv(index=False),
         file_name="churn_template.csv",
         mime="text/csv",
     )
@@ -825,9 +774,8 @@ def page_batch_prediction(model, feature_names: list[str], threshold: float):
     uploaded = st.file_uploader("Upload prediction CSV", type="csv", key="batch_upload")
 
     if not uploaded:
-        st.info("Belum ada file diupload. Contoh menggunakan 50 baris sintetis:")
-        df_preview = load_sample_data(50, feature_names).head(5)
-        st.dataframe(df_preview, use_container_width=True)
+        st.info("Belum ada file diupload. Preview 5 baris template sintetis:")
+        st.dataframe(load_sample_data(5, feature_names), width="stretch")
         return
 
     try:
@@ -841,11 +789,10 @@ def page_batch_prediction(model, feature_names: list[str], threshold: float):
         y_true_col = df_raw["Churn"].values.astype(int)
         df_raw = df_raw.drop(columns=["Churn"])
 
-    # Validate columns
     missing_cols = [c for c in feature_names if c not in df_raw.columns]
     extra_cols   = [c for c in df_raw.columns if c not in feature_names]
     if missing_cols:
-        st.warning(f"⚠️ Kolom hilang (akan diisi 0): {missing_cols}")
+        st.warning(f"⚠️ Kolom hilang (diisi 0): {missing_cols}")
     if extra_cols:
         st.info(f"ℹ️ Kolom extra diabaikan: {extra_cols}")
 
@@ -861,27 +808,15 @@ def page_batch_prediction(model, feature_names: list[str], threshold: float):
 
     st.success(f"✅ Selesai: {len(df_raw)} baris diproses.")
 
-    result_df = df_raw.copy()
-    result_df["Churn_Probability"] = y_prob.round(4)
-    result_df["Churn_Prediction"]  = y_pred
-    result_df["Prediction_Label"]  = result_df["Churn_Prediction"].map({0: "No Churn", 1: "Churn"})
-
-    if y_true_col is not None:
-        result_df["Churn_Actual"] = y_true_col
-
-    # Summary metrics
     n_churn = int(y_pred.sum())
     n_total = len(y_pred)
     c1, c2, c3 = st.columns(3)
     c1.markdown(kpi_card("Total Records", str(n_total)), unsafe_allow_html=True)
     c2.markdown(kpi_card("Predicted Churn", str(n_churn), f"{n_churn/n_total*100:.1f}%"), unsafe_allow_html=True)
-    c3.markdown(kpi_card("Avg Churn Prob", f"{y_prob.mean():.3f}"), unsafe_allow_True=True) if False else \
     c3.markdown(kpi_card("Avg Churn Prob", f"{y_prob.mean():.3f}"), unsafe_allow_html=True)
 
-    # Distribution chart
     fig_hist = go.Figure(go.Histogram(
-        x=y_prob,
-        nbinsx=30,
+        x=y_prob, nbinsx=30,
         marker=dict(color="#3b82f6", line=dict(color="#1e2940", width=1)),
     ))
     fig_hist.add_vline(x=threshold, line_dash="dash", line_color="#ef4444",
@@ -889,13 +824,18 @@ def page_batch_prediction(model, feature_names: list[str], threshold: float):
                        annotation_font=dict(color="#ef4444"))
     fig_hist.update_layout(
         **PLOTLY_LAYOUT, height=280,
-        xaxis_title="Churn Probability",
-        yaxis_title="Count",
+        xaxis_title="Churn Probability", yaxis_title="Count",
         title=dict(text="Probability Distribution", x=0.5, xanchor="center"),
     )
-    st.plotly_chart(fig_hist, use_container_width=True)
+    st.plotly_chart(fig_hist, width="stretch")
 
-    # Result table
+    result_df = df_raw.copy()
+    result_df["Churn_Probability"] = y_prob.round(4)
+    result_df["Churn_Prediction"]  = y_pred
+    result_df["Prediction_Label"]  = result_df["Churn_Prediction"].map({0: "No Churn", 1: "Churn"})
+    if y_true_col is not None:
+        result_df["Churn_Actual"] = y_true_col
+
     st.markdown("#### Prediction Results")
     display_cols = ["Churn_Probability", "Churn_Prediction", "Prediction_Label"]
     if y_true_col is not None:
@@ -903,34 +843,31 @@ def page_batch_prediction(model, feature_names: list[str], threshold: float):
     st.dataframe(
         result_df[display_cols].style
             .background_gradient(subset=["Churn_Probability"], cmap="RdYlGn_r", vmin=0, vmax=1),
-        use_container_width=True, height=350,
+        width="stretch", height=350,
     )
 
-    # Download
-    csv_out = result_df.to_csv(index=False)
     st.download_button(
         "📤 Download Result CSV",
-        data=csv_out,
+        data=result_df.to_csv(index=False),
         file_name="churn_predictions.csv",
         mime="text/csv",
     )
 
 
-# ── Page: Model Info ──────────────────────────────────────────────────────────
-def page_model_info(model, threshold: float, feature_names: list[str]):
+def page_model_info(model, threshold: float, feature_names: list):
     st.markdown("<div class='section-header'>Model Info</div>", unsafe_allow_html=True)
+
+    params = {}
+    try:
+        params = model.get_params()
+    except Exception:
+        pass
 
     col1, col2 = st.columns(2)
 
     with col1:
         st.markdown("#### 🤖 Model Architecture")
-        params = {}
-        try:
-            params = model.get_params()
-        except Exception:
-            pass
-
-        info = {
+        for k, v in {
             "Model Type": "XGBoostClassifier",
             "Search Strategy": "RandomizedSearchCV (40 iter)",
             "CV Strategy": "StratifiedKFold (5-Fold)",
@@ -938,8 +875,7 @@ def page_model_info(model, threshold: float, feature_names: list[str]):
             "Optimal Threshold": f"{threshold:.2f}",
             "Feature Count": str(len(feature_names)),
             "Target Variable": "Churn (0=No, 1=Yes)",
-        }
-        for k, v in info.items():
+        }.items():
             st.markdown(
                 f"<div style='display:flex;justify-content:space-between;padding:8px 12px;"
                 f"border-bottom:1px solid #1e2940'>"
@@ -950,9 +886,7 @@ def page_model_info(model, threshold: float, feature_names: list[str]):
 
     with col2:
         st.markdown("#### ⚙️ Best Hyperparameters")
-        tunable = ["n_estimators", "max_depth", "learning_rate",
-                   "subsample", "colsample_bytree", "gamma", "min_child_weight"]
-        for p in tunable:
+        for p in ["n_estimators", "max_depth", "learning_rate", "subsample", "colsample_bytree", "gamma", "min_child_weight"]:
             val = params.get(p, "N/A")
             st.markdown(
                 f"<div style='display:flex;justify-content:space-between;padding:8px 12px;"
@@ -963,16 +897,15 @@ def page_model_info(model, threshold: float, feature_names: list[str]):
             )
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("#### 📚 Preprocessing Pipeline (Notebook Summary)")
-    steps = [
+    st.markdown("#### 📚 Preprocessing Pipeline")
+    for step, desc in [
         ("1. Data Collection", "Telco Customer Churn — Kaggle (blastchar/telco-customer-churn)"),
         ("2. Feature Engineering", "PhoneLineStatus (3-way), HasInternet flag, replace 'No internet service'"),
         ("3. Encoding", "LabelEncoder untuk binary cols, get_dummies untuk multi-valued cols"),
         ("4. Imbalance Handling", "SMOTE oversampling (random_state=42)"),
         ("5. Threshold Tuning", "Sweep 0.30–0.70 step 0.01, maximize F1-Score"),
         ("6. Model Saving", "joblib.dump(model, 'model/xgb_churn_model.pkl')"),
-    ]
-    for step, desc in steps:
+    ]:
         st.markdown(
             f"<div style='padding:10px 14px;background:#141c2f;border-radius:8px;"
             f"margin-bottom:8px;border-left:3px solid #3b82f6'>"
@@ -983,13 +916,12 @@ def page_model_info(model, threshold: float, feature_names: list[str]):
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("#### 💡 Business Recommendations")
-    recs = [
+    for title, desc in [
         ("🎯 Threshold < 0.38", "Lebih agresif. Cocok jika biaya False Negative (kehilangan pelanggan) > biaya retensi."),
         ("🛡️ Threshold > 0.38", "Lebih selektif. Gunakan jika tim retensi terbatas dan ingin precision tinggi."),
         ("📊 Monitor F1 & Recall", "Di industri telco, Recall lebih kritis — jangan biarkan churn lolos."),
         ("🔄 Retrain berkala", "Distribusi pelanggan berubah. Retrain minimal setiap kuartal."),
-    ]
-    for title, desc in recs:
+    ]:
         st.markdown(
             f"<div style='padding:10px 14px;background:#141c2f;border-radius:8px;"
             f"margin-bottom:8px;border-left:3px solid #f59e0b'>"
@@ -999,44 +931,38 @@ def page_model_info(model, threshold: float, feature_names: list[str]):
         )
 
 
-# ── Main App Entry ─────────────────────────────────────────────────────────────
 def main():
-    # Load model
     model, threshold_pkl, load_error = load_model_and_threshold()
 
-    # Session state init
     if "active_threshold" not in st.session_state:
         st.session_state["active_threshold"] = threshold_pkl
 
-    # Sidebar
     page, global_thresh = render_sidebar(st.session_state["active_threshold"])
     st.session_state["active_threshold"] = global_thresh
-    threshold = global_thresh
 
-    # Error banner
     if load_error:
         st.error(f"⚠️ {load_error}")
         st.info(
             "Pastikan file model ada di `model/xgb_churn_model.pkl`.\n\n"
-            "Struktur folder:\n```\nproject/\n├── app.py\n└── model/\n    ├── xgb_churn_model.pkl\n    └── xgb_churn_threshold.pkl\n```"
+            "Struktur folder:\n```\nproject/\n├── app.py\n└── model/\n"
+            "    ├── xgb_churn_model.pkl\n    └── xgb_churn_threshold.pkl\n```"
         )
         return
 
     feature_names = get_feature_names(model)
 
-    # Route
     if page == "📊  Dashboard Overview":
-        page_dashboard(model, feature_names, threshold)
+        page_dashboard(model, feature_names, global_thresh)
     elif page == "📈  Feature Importance":
         page_feature_importance(model, feature_names)
     elif page == "🎯  Threshold Tuning":
-        page_threshold_tuning(model, feature_names, threshold)
+        page_threshold_tuning(model, feature_names, global_thresh)
     elif page == "🔮  Single Prediction":
-        page_single_prediction(model, feature_names, threshold)
+        page_single_prediction(model, feature_names, global_thresh)
     elif page == "📦  Batch Prediction":
-        page_batch_prediction(model, feature_names, threshold)
+        page_batch_prediction(model, feature_names, global_thresh)
     elif page == "ℹ️   Model Info":
-        page_model_info(model, threshold, feature_names)
+        page_model_info(model, global_thresh, feature_names)
 
 
 if __name__ == "__main__":
