@@ -1,0 +1,71 @@
+# 30-Day Machine Learning Roadmap Environment (CPU Only)
+# Compatible with Python 3.11 / 3.12
+# Linux / Fedora friendly
+
+# Core Data Science
+numpy
+pandas
+scipy
+
+# Visualization
+matplotlib
+seaborn
+plotly
+
+# Machine Learning
+scikit-learn
+xgboost
+lightgbm
+catboost
+
+# Imbalanced Data
+imbalanced-learn
+
+# Hyperparameter Optimization
+optuna
+
+# Experiment Tracking
+mlflow
+
+# Feature Engineering
+feature-engine
+category-encoders
+
+# Model Explainability
+shap
+lime
+
+# NLP
+nltk
+spacy
+
+# Recommendation Systems
+scikit-surprise
+
+# Association Rule Mining
+mlxtend
+
+# Time Series
+statsmodels
+prophet
+
+# Dimensionality Reduction
+umap-learn
+
+# Geospatial
+geopandas
+geopy
+
+# Data Validation
+great-expectations
+
+# Utilities
+tqdm
+joblib
+
+# Notebook Environment
+jupyterlab
+notebook
+ipykernel
+
+kagglehub
